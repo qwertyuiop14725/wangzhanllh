@@ -581,6 +581,7 @@
   .ci span{font-size:11px;color:#6c8798;margin-left:auto;padding-right:10px}
   .a-note{font-size:11.5px;line-height:1.7;color:#6c8798;margin-top:10px}
   .a-note em{font-style:normal;color:#2ee6c0}
+  .a-note b{font-weight:600;color:#5cf0d3}
   .toast{
     position:fixed;left:50%;bottom:26px;z-index:120;
     -webkit-transform:translate3d(-50%,14px,0);transform:translate3d(-50%,14px,0);
@@ -710,6 +711,8 @@
   body.light .chk2 input:checked + .box:after{border-color:#fff}
   body.light .a-note{color:#6a808e}
   body.light .a-note em{color:#0a8f7a}
+  body.light .a-note b{color:#0a7a68}
+  body.light .a-note[style*="255,107,87"] b{color:#c0392b}
   body.light .err{color:#c0392b}
   body.light .toast{background:#fff;border-color:rgba(10,143,122,.45);color:#0a7a68;box-shadow:0 18px 44px -18px rgba(15,40,55,.4)}
   body.light .adm-b::-webkit-scrollbar-thumb{background:rgba(10,143,122,.3)}
@@ -1427,13 +1430,22 @@ var CONFIG = {
   /* 首屏渲染 */
   renderAll();
 
-  // 部署到服务器时拉一次 data.json：拿到了就整页重画，之后所有改动都写进那个文件
+  // 部署到服务器时拉一次接口：拿到了就整页重画，之后所有改动都存到服务端
+  var diag = { state: 'unknown', keys: '' };   // 给后台显示用，方便排查
   (function boot() {
-    if (BAKED) return;                    // 已用烘焙进文件的配置，不必再问服务器
-    req('GET', 'api/data', null, function (o) {
-      if (!o || !o.ok) return;            // 静态托管 / 本地打开 → 保持本机模式
-      if (o.noKv) return;                 // 服务端没挂存储 → 退回本机模式 + 下载 index.html
+    if (BAKED) { diag.state = 'baked'; return; }   // 已用烘焙进文件的配置，不必再问服务器
+    req('GET', 'api/data', null, function (o, st) {
+      if (!o || !o.ok) {                     // 接口没部署上（404 / 不是 Pages Functions）
+        diag.state = st === 404 ? 'noapi' : 'offline';
+        return;
+      }
+      if (o.noKv) {                          // 接口通了，但没找到 KV
+        diag.state = 'nokv';
+        diag.keys = o.keys ? o.keys.join(', ') : '';
+        return;
+      }
       FILE_MODE = true;
+      diag.state = 'file';
       var n = o.file ? normData(o) : null;
       if (n) { CONFIG.categories = n.categories; CONFIG.sites = n.sites; saved = true; renderAll(); }
     });
@@ -1804,6 +1816,39 @@ var CONFIG = {
   admPwd.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); tryLogin(); } };
 
   /* ---------- 后台面板渲染 ---------- */
+  // 存储到底通没通，直接摆在后台上，省得猜
+  function diagHTML() {
+    var t, tip, bad = 0;
+    if (diag.state === 'file') {
+      t = '已连通服务端存储 · 改动永久生效';
+      tip = '谁打开都是同一份。';
+    } else if (diag.state === 'baked') {
+      t = '配置已烘焙在文件里';
+      tip = '改完点下面「下载 index.html」，覆盖上传即永久生效。';
+    } else if (diag.state === 'nokv') {
+      bad = 1;
+      t = '接口通了，但没找到 KV';
+      tip = '绑定变量名随便起都能识别（当前收到：' + (diag.keys || '无') +
+        '）。注意：<em>改完绑定要重新部署一次</em>才生效。';
+    } else if (diag.state === 'noapi') {
+      bad = 1;
+      t = '接口没部署上（404）';
+      tip = '上传时要把 <em>functions</em> 整个目录和 index.html 一起传，目录结构不能变。';
+    } else if (diag.state === 'offline') {
+      bad = 1;
+      t = '接口没响应';
+      tip = '当前是纯静态托管或本地打开，只能靠「下载 index.html」保存。';
+    } else {
+      t = '正在检测…';
+      tip = '';
+    }
+    return '<p class="a-note" style="margin:0 0 12px;padding:10px 12px;border-radius:7px;' +
+      (bad ? 'background:rgba(255,107,87,.08);border:1px solid rgba(255,107,87,.28)' :
+        'background:rgba(46,230,192,.06);border:1px solid rgba(46,230,192,.22)') + '">' +
+      '<b style="display:block;font-size:12.5px;margin-bottom:3px;color:' +
+      (bad ? '#ff8f7e' : '#5cf0d3') + '">' + t + '</b>' + tip + '</p>';
+  }
+
   function catOptions(sel) {
     var o = [];
     for (var a = 0; a < CONFIG.categories.length; a++) {
@@ -1895,8 +1940,9 @@ var CONFIG = {
 
     /* 数据 */
     h.push('<div class="a-sec"><div class="a-hd">DATA · 数据<em>' +
-      (FILE_MODE ? '文件模式 · 写 data.json' : (BAKED ? '已烘焙进文件' : (saved ? '本机已存' : '用默认值'))) +
+      (FILE_MODE ? '服务端存储 · 已连通' : (BAKED ? '已烘焙进文件' : (saved ? '本机已存' : '用默认值'))) +
       '</em></div>');
+    h.push(diagHTML());
     h.push('<div class="f"><label for="dbJson">备份 JSON（可复制走，也可粘贴后导入）</label>' +
       '<textarea class="inp" id="dbJson" spellcheck="false"></textarea></div>');
     h.push('<div class="btns" style="margin-top:6px">' +
