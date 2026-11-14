@@ -54,6 +54,12 @@ window.SITE_DATA = {
       所属分类: '黄 赌',
       介绍: '有片  丰富' },
 
+    { 标题: '17c.com',
+      网址: 'https://17c.xn--54qu66awkkshgsf475q.com/',
+      是否启用免责声明: true,
+      所属分类: '黄 赌',
+      介绍: '有片  丰富' },
+
     { 标题: '小虫api',
       网址: 'https://api.ovo1.cc/',
       是否启用免责声明: true,
